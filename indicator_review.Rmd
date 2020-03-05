@@ -1,0 +1,310 @@
+---
+title: "SDG Indicator Review"
+author: "Fiona Spooner"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  prettydoc::html_pretty:
+    theme: leonids
+    highlight: github
+    toc: true
+geometry: margin=3cm
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+source("sdg_useful.R")
+```
+
+```{r Setup}
+library(dplyr)
+library(ggplot2)
+library(janitor)
+library(knitr)
+library(RColorBrewer)
+library(readr)
+library(readxl)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(sf)
+library(tidyr)
+```
+
+
+
+
+SDG Tracker Gaps
+
+```{r}
+world <- ne_countries(scale = "medium", returnclass = "sf")
+
+all_inds_fp <-
+  list.files("Data",
+             pattern = "*I_",
+             recursive = TRUE,
+             full.names = TRUE)
+
+full_country_seq <- function(file_path) {
+  dat <- clean_names(read_csv(file_path))
+  goal <- file_path %>% gsub("Data/", "", .) %>% gsub("/T.*", "", .)
+  target <-
+    file_path %>% gsub(paste0("Data/", goal, "/"), "", .) %>% gsub("/I_.*", "", .)
+  indicator <-
+    file_path %>% gsub(paste0("Data/", goal, "/", target, "/"), "", .) %>% sub("_[^_]+$", "", .)
+  
+  year_out <- dat %>%
+    group_by(entity, code) %>%
+    summarise(
+      latest_data_year = max(year),
+      goal = goal,
+      target = target,
+      indicator = indicator,
+      indicator_desc = colnames(.)[4]
+    )
+  
+  return(year_out)
+  
+}
+
+last_data_df <- lapply(all_inds_fp, full_country_seq)
+
+year_df <- do.call("rbind", last_data_df)
+```
+
+```{r}
+year_df$goal <- year_df$goal %>%
+  gsub("Goal_", "", .)
+
+year_df$target <- year_df$target %>%
+  gsub("Target_", "", .) %>% gsub("_", ".", .)
+
+year_df$indicator <- year_df$indicator %>%
+  gsub("I_", "", .) %>% gsub("_", ".", .)
+```
+
+
+Removing countries which are in the sdg tracker data but do not have a geometry in the world sf - need to try downloading the rnaturalearthhighres package.
+
+```{r}
+year_df <- year_df[year_df$code %in% world$iso_a3 & !is.na(year_df$code),]
+
+```
+
+
+
+```{r Loading and Cleaning Indicator Data}
+inds <- clean_names(read_xlsx("Data/IndicatorSummary.xlsx"))
+
+inds$indicator <-  inds$official_indicator %>% 
+  gsub(":.*","",.) %>% 
+  gsub("Indicator ", "", .)
+```
+
+```{r}
+kable(inds %>% 
+  group_by(pillar) %>% 
+  summarise(count = n(),no_track_count = sum(sdg_tracker_indicator_available == "No"),tier_3 = sum(indicator_tier == 3), prop_no_ind = (no_track_count/count)*100, prop_t3 = (tier_3/count)*100) %>% 
+  select(pillar, prop_no_ind, prop_t3) %>% 
+  arrange(-prop_no_ind))
+```
+
+```{r}
+
+track_inds <- inds %>%
+  dplyr::select(
+    pillar,
+    sdg,
+    target,
+    indicator,
+    indicator_tier,
+    sdg_tracker_indicator_available,
+    sdgt_earliest_date,
+    sdgt_date_of_most_recent_data) %>%
+  distinct()%>% 
+  group_by(indicator) %>% 
+  tidyr::fill(pillar, .direction = "updown") %>% 
+  ungroup()
+
+
+
+```  
+
+
+```{r}
+countries <- rep(unique(year_df$entity), each = length(track_inds$indicator))
+codes <- rep(unique(year_df$code), each = length(track_inds$indicator))
+
+c_inds <-
+  data.frame(countries = I(countries),
+             code = codes,
+             indicator = I(track_inds$indicator))
+
+all_inds <- merge(c_inds, track_inds, by = "indicator", all = TRUE)
+
+
+glob_inds <-
+  merge(
+    year_df,
+    all_inds,
+    by.x = c("entity", "code","indicator"),
+    by.y = c("countries", "code","indicator"),
+    all = TRUE
+  ) %>%
+  select(pillar, indicator_tier, goal, target.x, indicator, entity, code,  latest_data_year,sdg_tracker_indicator_available) %>% 
+  arrange(indicator) %>% 
+  rename(target = target.x) %>% 
+  distinct() %>%
+  group_by(indicator) %>% 
+  tidyr::fill(pillar, .direction = "updown") %>%
+  tidyr::fill(target, .direction = "updown") %>%
+  ungroup() 
+
+glob_inds$goal <- gsub("\\..*", "",glob_inds$indicator)
+
+```
+
+
+Plot showing indicator availability across all of the SDGs and pillars
+
+```{r}
+#ind_ord <- unique(glob_inds$indicator)
+
+glob_inds <- glob_inds %>%
+  mutate(got_indicator = ifelse(grepl("Yes", sdg_tracker_indicator_available), 1, 0))
+
+glob_inds$indicator <- factor(glob_inds$indicator, levels = ind_ord)
+
+#goal_breaks <- cumsum(rle(as.numeric(glob_inds$goal))$lengths)
+
+sdg_plot <- glob_inds %>% 
+  dplyr::select(goal,indicator, got_indicator) %>% 
+  group_by(goal) %>% 
+  distinct() %>% 
+  mutate(sum_inds = sum(got_indicator), num_inds = n(), prop_inds = (sum_inds/num_inds)*100) %>% 
+  select(goal, sum_inds, num_inds, prop_inds) %>% 
+  distinct() %>% 
+  ungroup() %>% 
+  mutate(goal = factor(goal, levels = 1:17)) %>% 
+  ggplot(., aes(x = goal, y = prop_inds, group = goal,fill = goal, colour = goal))+
+  geom_bar(stat = "identity", width = 1) +
+  sdg_fill_scale + 
+  sdg_col_scale + 
+  theme_minimal()+
+  theme(legend.position = "none",
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank(),
+        panel.border = element_blank(), 
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())  
+        # coord_polar() + 
+        # ylim(-2.5, 100)
+
+```
+
+ and the date of the most recent data collection
+
+Which countries have the oldest data
+```{r}
+
+ggplot(glob_inds, aes(x = indicator, y = latest_data_year, group = pillar, colour = pillar))+
+  geom_point()+
+  theme_bw()
+
+
+glob_inds %>% 
+  group_by(entity) %>% 
+  summarise(average_data_year = mean(na.omit(latest_data_year))) %>% 
+  arrange(average_data_year)
+  
+
+
+
+```
+
+
+The range of most recent dates for each indicator
+```{r}
+
+date_ranges <- glob_inds %>% 
+  group_by(indicator) %>% 
+  summarise(earliest_country_data = min(na.omit(latest_data_year)), latest_country_data = max(na.omit(latest_data_year))) 
+
+date_ranges$earliest_country_data[is.infinite(date_ranges$earliest_country_data)] <- NA
+
+date_ranges$latest_country_data[is.infinite(date_ranges$latest_country_data)] <- NA
+
+```
+
+
+Counting the number of indicators without a tracker in each country
+```{r}
+
+ind_count <- glob_inds %>%
+  filter(!is.na(code)) %>%
+  group_by(entity, code) %>%
+  summarise(got_ind = sum(!is.na(latest_data_year)), missing_ind = 244 - got_ind) %>% 
+  ungroup() %>% 
+  #arrange(-got_ind) %>% 
+  mutate(rank = rank(missing_ind))
+
+```
+
+```{r}
+
+world <- ne_countries(scale = "small", returnclass = "sf")
+
+world_df <-
+  merge(world,
+        ind_count,
+        by.x = "adm0_a3",
+        by.y = "code",
+        all = TRUE)
+
+world_dis <- world_df  %>%
+  group_by(adm0_a3) %>%
+  filter(got_ind > 0)
+
+ggplot(data = world_dis) +
+  geom_sf(aes(fill = got_ind )) +
+  scale_fill_viridis_c(option = "plasma") +
+  theme_bw()
+
+##make this into a leaflet 
+
+```
+
+```{r}
+ggplot(data = world_dis) +
+  geom_sf(aes(fill = rank, col = rank)) +
+  scale_fill_viridis_c(option = "plasma") +
+  scale_color_viridis_c(option = "plasma") +
+  theme_bw()
+
+
+```
+
+```{r}
+ind_count %>% 
+  dplyr::select(entity, got_ind) %>% 
+  arrange(got_ind) %>% 
+  head(., 20)
+
+
+```
+
+
+
+```{r, echo = FALSE, eval = FALSE}
+inds %>% 
+  group_by(indicator_tier, pillar) %>% 
+#  summarise(count = n(),no_track_count = sum(sdg_tracker_indicator_available == "No"), prop_no = no_track_count/count)
+  filter(indicator_tier == 3) %>% 
+  select(official_indicator, sdgt_date_of_most_recent_data) %>% 
+  distinct()
+
+kable(inds$sdgt_data_publisher)
+
+```
