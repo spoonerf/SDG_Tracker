@@ -11,29 +11,32 @@ geometry: margin=3cm
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, dpi = 100, fig.align="center")
 source("sdg_useful.R")
 ```
 
-```{r Setup}
+```{r Setup, echo = FALSE}
 library(dplyr)
 library(ggplot2)
 library(janitor)
+library(kableExtra)
 library(knitr)
 library(RColorBrewer)
 library(readr)
 library(readxl)
 library(rnaturalearth)
 library(rnaturalearthdata)
+library(rnaturalearthhires)
 library(sf)
 library(tidyr)
 ```
 
 
-SDG Tracker Gaps
 
 ```{r, echo = FALSE}
-world <- ne_countries(scale = "medium", returnclass = "sf")
+#SDG Tracker Gaps
+
+world <- ne_countries(scale = "large", returnclass = "sf")
 
 all_inds_fp <-
   list.files("Data",
@@ -80,16 +83,16 @@ year_df$indicator <- year_df$indicator %>%
 ```
 
 
-Removing countries which are in the sdg tracker data but do not have a geometry in the world sf - need to try downloading the rnaturalearthhighres package.
-
 ```{r, echo = FALSE}
+#Removing countries which are in the sdg tracker data but do not have a geometry in the #world sf - need to try downloading the rnaturalearthhighres package.
+
 year_df <- year_df[year_df$code %in% world$iso_a3 & !is.na(year_df$code),]
 
 ```
 
 
 
-```{r Loading and Cleaning Indicator Data}
+```{r Loading and Cleaning Indicator Data, echo = FALSE}
 inds <- clean_names(read_xlsx("Data/IndicatorSummary.xlsx"))
 
 inds$indicator <-  inds$official_indicator %>% 
@@ -97,12 +100,18 @@ inds$indicator <-  inds$official_indicator %>%
   gsub("Indicator ", "", .)
 ```
 
+
+
+
 ```{r}
 kable(inds %>% 
   group_by(pillar) %>% 
-  summarise(count = n(),no_track_count = sum(sdg_tracker_indicator_available == "No"),tier_3 = sum(indicator_tier == 3), prop_no_ind = (no_track_count/count)*100, prop_t3 = (tier_3/count)*100) %>% 
+  summarise(count = n(),no_track_count = sum(sdg_tracker_indicator_available == "No"),tier_3 = sum(indicator_tier == 3), prop_no_ind = round((no_track_count/count)*100,2), prop_t3 = round((tier_3/count)*100,2)) %>% 
   select(pillar, prop_no_ind, prop_t3) %>% 
-  arrange(-prop_no_ind))
+      arrange(-prop_no_ind), col.names = c("Pillar",
+                           "Missing Indicators (%)",
+                           "Tier 3 Indicators (%)"))%>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
 ```{r, echo = FALSE}
@@ -174,7 +183,7 @@ glob_inds$indicator <- factor(glob_inds$indicator, levels = ind_ord)
 
 Indicator availablility per SDG - based on SDG Tracker data
 
-```{r}
+```{r, echo = FALSE}
 
 sdg_plot <- glob_inds %>% 
   dplyr::select(goal,indicator, got_indicator) %>% 
@@ -189,7 +198,7 @@ sdg_plot <- glob_inds %>%
   geom_bar(stat = "identity") +
   sdg_fill_scale + 
   sdg_col_scale + 
-  theme_minimal()+
+  theme_fiona()+
   theme(legend.position = "none") + 
   ylab("Proportion of Indicators Available (%)") + 
   xlab("Sustainable Development Goal") + 
@@ -201,7 +210,7 @@ sdg_plot
 ```
 
 Proportion of indicator tiers in each goal 
-```{r}
+```{r, echo = FALSE}
 tier_goal_plot <- glob_inds %>% 
   dplyr::select(goal,indicator_tier,indicator) %>% 
   group_by(goal) %>% 
@@ -211,7 +220,7 @@ tier_goal_plot <- glob_inds %>%
   mutate(goal = factor(goal, levels = 1:17)) %>% 
   ggplot(., aes(x = goal,fill = indicator_tier))+
   geom_bar(position = "fill") +
-  theme_minimal()+
+  theme_fiona()+
   ylab("Indicator Tier Breakdown") + 
   xlab("Sustainable Development Goal") + 
   ggtitle("Indicator Tiers Across Goals") + 
@@ -225,7 +234,7 @@ tier_goal_plot
 Indicator availablility per Pillar - based on SDG Tracker data
 
 
-```{r}
+```{r, echo = FALSE}
 pillar_plot <- glob_inds %>% 
   dplyr::select(pillar,indicator, got_indicator) %>% 
   group_by(pillar) %>% 
@@ -239,7 +248,7 @@ pillar_plot <- glob_inds %>%
   geom_bar(stat = "identity") +
   pillar_fill_scale + 
   pillar_col_scale + 
-  theme_minimal()+
+  theme_fiona()+
   theme(legend.position = "none") + 
   ylab("Proportion of Indicators Available (%)") + 
   xlab("Sustainable Development Pillar") + 
@@ -251,7 +260,7 @@ pillar_plot
 
 ```
 
-```{r}
+```{r, echo = FALSE}
 pillar_tier_plot <- glob_inds %>% 
   dplyr::select(pillar,indicator_tier,indicator) %>% 
   group_by(pillar) %>% 
@@ -260,20 +269,94 @@ pillar_tier_plot <- glob_inds %>%
   mutate(pillar = factor(pillar, levels = c("Economy", "Society", "Biosphere"))) %>% 
   ggplot(., aes(x = pillar,fill = indicator_tier))+
   geom_bar(position = "fill") +
-  theme_minimal()+
-  ylab("Proportion of Indicators Available (%)") + 
+  theme_fiona()+
+  ylab("Proportion of each Indicator Tier") + 
   xlab("Sustainable Development Pillar") + 
-  ggtitle("Indicators Available on SDG Tracker") 
+  ggtitle("Indicator Tiers Across SDG Pillars") 
 
 pillar_tier_plot
 
 
 ```
 
+```{r, echo = FALSE, eval = FALSE}
+
+jit_tier_track <- ggplot(glob_inds, aes(x = got_indicator, y = indicator_tier))+
+  geom_jitter()
+  
+  
+  
+
+```
+
+Looking at the age of each of the indicators, at a goal level
+
+```{r, echo = FALSE}
+
+goal_ind_age <- glob_inds %>% 
+  filter(!is.na(latest_data_year)) %>% 
+  group_by(goal, latest_data_year) %>% 
+  mutate(year_freq = n()) %>%
+  ungroup() %>% 
+  mutate(goal = factor(goal, levels = 17:1)) %>% 
+  select(goal, latest_data_year, year_freq) %>% 
+  arrange(goal,latest_data_year) %>% 
+  distinct() %>% 
+  ggplot(., aes(x = latest_data_year, y = goal, size = year_freq, fill = goal, col = goal))+
+  geom_point(alpha = 0.5, shape=21)+ 
+  sdg_fill_scale + 
+  sdg_col_scale +
+  theme_fiona() + 
+  theme(legend.position = "none") + 
+  ylab("Sustainable Development Goal") + 
+  xlab("Year") + 
+  ggtitle("Age of Most Recent Indicator Data - All Countries")
+
+
+goal_ind_age
+ 
+```
+
+
+```{r, echo = FALSE}
+world_df <- data.frame(world %>% 
+  select(iso_a3, region_un, continent, pop_est, gdp_md_est) %>% 
+  mutate(code = iso_a3, region_un = as.factor(region_un)) %>% 
+  left_join(., glob_inds, by = "code"))
+
+
+goal_ind_age_region <- world_df %>% 
+  filter(!is.na(latest_data_year) & region_un != "Antarctica"& region_un != "Seven seas (open ocean)") %>% 
+  group_by(region_un, goal, latest_data_year) %>% 
+  mutate(year_freq = n()) %>%
+  ungroup() %>% 
+  mutate(goal = factor(goal, levels = 17:1)) %>% 
+  select(region_un, goal, latest_data_year, year_freq) %>% 
+ # arrange(goal,latest_data_year) %>% 
+  distinct() %>% 
+  ggplot(., aes(x = latest_data_year, y = goal, size = year_freq, fill = goal, col = goal), group = region_un)+
+  geom_point(alpha = 0.5, shape=21)+ 
+  sdg_fill_scale + 
+  sdg_col_scale +
+  theme_fiona() + 
+  theme(legend.position = "none") + 
+  ylab("Sustainable Development Goal") + 
+  xlab("Year") + 
+  ggtitle("Age of Most Recent Indicator Data - By Region")+
+  facet_wrap( ~ region_un)
+
+goal_ind_age_region 
+
+
+```
+
+
+##indicators with the oldest data
+
  and the date of the most recent data collection
 
 Which countries have the oldest data
-```{r}
+```{r, eval = FALSE, echo = FALSE}
 
 ggplot(glob_inds, aes(x = indicator, y = latest_data_year, group = pillar, colour = pillar))+
   geom_point()+
@@ -292,7 +375,7 @@ glob_inds %>%
 
 
 The range of most recent dates for each indicator
-```{r}
+```{r, eval = FALSE, echo = FALSE}
 
 date_ranges <- glob_inds %>% 
   group_by(indicator) %>% 
@@ -306,7 +389,7 @@ date_ranges$latest_country_data[is.infinite(date_ranges$latest_country_data)] <-
 
 
 Counting the number of indicators without a tracker in each country
-```{r}
+```{r, echo = FALSE}
 
 ind_count <- glob_inds %>%
   filter(!is.na(code)) %>%
@@ -318,7 +401,7 @@ ind_count <- glob_inds %>%
 
 ```
 
-```{r}
+```{r, echo = FALSE}
 
 world <- ne_countries(scale = "small", returnclass = "sf")
 
@@ -342,7 +425,7 @@ ggplot(data = world_dis) +
 
 ```
 
-```{r}
+```{r, echo = FALSE}
 ggplot(data = world_dis) +
   geom_sf(aes(fill = rank, col = rank)) +
   scale_fill_viridis_c(option = "plasma") +
@@ -352,13 +435,11 @@ ggplot(data = world_dis) +
 
 ```
 
-```{r}
-ind_count %>% 
+```{r, echo = FALSE}
+kable(ind_count %>% 
   dplyr::select(entity, got_ind) %>% 
   arrange(got_ind) %>% 
-  head(., 20)
-
-
+  head(., 20))
 ```
 
 
