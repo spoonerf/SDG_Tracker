@@ -22,6 +22,7 @@ library(ggridges)
 library(janitor)
 library(kableExtra)
 library(knitr)
+library(leaflet)
 library(patchwork)
 library(RColorBrewer)
 library(readr)
@@ -86,7 +87,12 @@ year_df$indicator <- year_df$indicator %>%
 ```{r, echo = FALSE}
 #Removing countries which are in the sdg tracker data but do not have a geometry in the #world sf - need to try downloading the rnaturalearthhighres package.
 
-world <- ne_countries(scale = "large", returnclass = "sf")
+world <- clean_names(ne_countries(scale = "large", returnclass = "sf"))
+
+world$iso_a3[world$admin == "France"] <- "FRA"
+world$iso_a3[world$admin == "Indian Ocean Territory"] <- "IOT"
+world$iso_a3[world$admin == "Kosovo"] <- "RKS"
+world$iso_a3[world$admin == "Norway"] <- "NOR"
 
 year_df <- year_df[year_df$code %in% world$iso_a3 & !is.na(year_df$code),]
 
@@ -284,7 +290,7 @@ pillar_tier_plot <- glob_inds %>%
   geom_bar(position = "fill", colour = "black") +
   theme_fiona()+
   tier_fill_scale +
-  ylab("Proportion of Each Indicator Tier") + 
+  ylab("Proportion of Pillar Made\n up of Each Indicator Tier") + 
   xlab("Pillar") + 
   ggtitle("Indicator Tiers Across SDG Pillars") +
   guides(fill=guide_legend(title="Indicator Tier")) 
@@ -386,11 +392,11 @@ goal_ind_age_region
 
 There are a number of indicators which are only available for a limited number of countries. Here we highlight the number of countries with data available for each indicator.
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, fig.height = 10, fig.width = 8}
 num_countries <- glob_inds %>% 
-  select(goal, indicator, entity, latest_data_year) %>%
+  select(goal,code, indicator, entity, latest_data_year) %>%
   group_by(goal,indicator,entity) %>% 
-  filter(latest_data_year == max(latest_data_year) | is.na(latest_data_year)) %>% 
+  filter(latest_data_year == max(latest_data_year) | is.na(latest_data_year) & code != "ATA") %>% 
   ungroup() %>% 
   group_by(goal, indicator) %>% 
   summarise(num_countries = sum(!is.na(latest_data_year))) %>%
@@ -398,7 +404,7 @@ num_countries <- glob_inds %>%
   mutate(goal = factor(goal, levels = 17:1)) %>% 
   arrange(num_countries) %>% 
   ggplot(., aes(x = num_countries, y = goal, fill = goal))+
- geom_density_ridges(scale = 1, rel_min_height = 0.01,gradient_lwd = 1., alpha = 0.75, from = 0, to = 233) + 
+  geom_density_ridges(scale = 1.5, gradient_lwd = 1., alpha = 0.6, from = 0, to = 233) + 
   #geom_density()+
   theme_fiona() +
   sdg_fill_scale + 
@@ -406,61 +412,103 @@ num_countries <- glob_inds %>%
   ylab("Sustainable Development Goal")+
   xlab("Number of Countries with Indicator Data")
 
+
 num_countries
 
 ```
 
+The number of indicators available in each country:
 
-A map showing the number of indicators available in each country
-
-```{r, echo = FALSE}
-world_sf <- world %>% 
-  select(iso_a3, region_un, continent, pop_est, gdp_md_est) %>% 
-  mutate(code = iso_a3, region_un = as.factor(region_un)) %>% 
+```{r, echo = FALSE, fig.height= 11, fig.width= 13}
+world_sf <- world %>%
+  select(iso_a3, region_un, continent, pop_est, gdp_md_est) %>%
+  mutate(code = iso_a3, region_un = as.factor(region_un)) %>%
   left_join(., glob_inds, by = "code")
 
 
-num_ind_countries <- world_sf %>% 
-  group_by(entity, indicator) %>% 
-  filter(latest_data_year == max(latest_data_year) | is.na(latest_data_year)) %>% 
-  ungroup() %>% 
-  group_by(entity) %>% 
-  summarise(sum_ind = sum(!is.na(latest_data_year))) %>% 
-  ggplot(data = .) +
-  geom_sf(aes(fill = sum_ind ), lwd = 0) +
-  scale_fill_viridis_c(option = "plasma") +
-  theme_fiona() +
-  guides(fill=guide_legend(title="Number of Indicators"))
+num_ind_countries <- world_sf %>%
+  group_by(entity, indicator) %>%
+  filter(
+    latest_data_year == max(latest_data_year) |
+      is.na(latest_data_year) &
+      region_un != "Antarctica" &
+      region_un != "Seven seas (open ocean)"
+  ) %>%
+  ungroup() %>%
+  group_by(entity) %>%
+  summarise(sum_ind = sum(!is.na(latest_data_year)))
 
-num_ind_countries
+num_ind_countries <- as_Spatial(num_ind_countries)
+
+bins <- c(0, 25, 50, 75, 100, 125, 150, 175, 200, 244)
+pal <-
+  colorBin("YlOrRd", domain = num_ind_countries$sum_ind, bins = bins)
+
+labels <- sprintf(
+  "<strong>%s</strong><br/>%g indicators",
+  num_ind_countries$entity,
+  num_ind_countries$sum_ind
+) %>% lapply(htmltools::HTML)
+
+leaflet(num_ind_countries) %>%
+  setView(0, 0, 1) %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  addPolygons(
+    fillColor = ~ pal(sum_ind),
+    weight = 2,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    highlight = highlightOptions(
+      weight = 5,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.7,
+      bringToFront = TRUE
+    ),
+    label = labels,
+    labelOptions = labelOptions(
+      style = list("font-weight" = "normal", padding = "3px 8px"),
+      textsize = "15px",
+      direction = "auto"
+    )
+  ) %>%
+  addLegend(
+    pal = pal,
+    values = ~ sum_ind,
+    opacity = 0.7,
+    title = NULL,
+    position = "bottomright"
+  )
 
 ```
 
 
-A map showing the average age of the indicator data available
 
-```{r, echo = FALSE}
+
+```{r, echo = FALSE, eval = FALSE}
+#A map showing the average age of the indicator data available
+
 
 mean_ind_countries <- world_sf %>% 
   group_by(entity, indicator) %>% 
-  filter(latest_data_year == max(latest_data_year) | is.na(latest_data_year)) %>% ungroup() %>% 
+  filter(latest_data_year == max(latest_data_year)) %>% 
+  ungroup() %>% 
   group_by(entity) %>% 
-  summarise(mean_ind = mean(!is.na(latest_data_year))) %>% 
-  ggplot(data = .) +
-  geom_sf(aes(fill = mean_ind )) +
+  summarise(mean_year = mean(latest_data_year)) %>% 
+ ggplot(data = .) +
+  geom_sf( mapping = aes(fill = mean_year ), colour = NA) +
   scale_fill_viridis_c(option = "plasma") +
-  scale_color_viridis_c(option = "plasma") +
-  theme_bw()
+  theme_fiona() +
+  guides(fill=guide_legend(title="Mean Age of Best Data\n per Indicator"))
 
 mean_ind_countries
 
 
 ```
- * Indicators with the oldest data/fewest countries
 
- * Date of the most recent data collection
 
- * Which countries have the oldest data
 ```{r, eval = FALSE, echo = FALSE}
 
 ggplot(glob_inds, aes(x = indicator, y = latest_data_year, group = pillar, colour = pillar))+
@@ -478,8 +526,10 @@ glob_inds %>%
 ```
 
 
-The range of most recent dates for each indicator
+
 ```{r, eval = FALSE, echo = FALSE}
+
+#The range of most recent dates for each indicator
 
 date_ranges <- glob_inds %>% 
   group_by(indicator) %>% 
@@ -492,8 +542,10 @@ date_ranges$latest_country_data[is.infinite(date_ranges$latest_country_data)] <-
 ```
 
 
-Counting the number of indicators without a tracker in each country
-```{r, echo = FALSE}
+
+```{r, echo = FALSE, eval = FALSE}
+
+#Counting the number of indicators without data in each country
 
 ind_count <- glob_inds %>%
   filter(!is.na(code)) %>%
