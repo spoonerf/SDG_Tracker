@@ -22,7 +22,7 @@ tier_col_scale <- scale_color_manual(name = "tier",values = tier_colours)
 
 
 theme_fiona <- function () { 
-  theme_minimal(base_size=11, base_family="Helvetica") %+replace% 
+  theme_minimal(base_size=11) %+replace% 
     theme(
       panel.background  = element_blank(),
       #panel.border = element_rect(colour = "black", fill = NA, size = 0.2),
