@@ -17,6 +17,7 @@ source("sdg_useful.R")
 
 ```{r Setup, echo = FALSE}
 library(dplyr)
+library(gapminder)
 library(ggplot2)
 library(ggridges)
 library(janitor)
@@ -24,6 +25,7 @@ library(kableExtra)
 library(knitr)
 library(leaflet)
 library(patchwork)
+library(plotly)
 library(RColorBrewer)
 library(readr)
 library(readxl)
@@ -72,6 +74,7 @@ last_data_df <- lapply(all_inds_fp, full_country_seq)
 year_df <- do.call("rbind", last_data_df)
 ```
 
+
 ```{r, echo = FALSE}
 year_df$goal <- year_df$goal %>%
   gsub("Goal_", "", .)
@@ -81,13 +84,23 @@ year_df$target <- year_df$target %>%
 
 year_df$indicator <- year_df$indicator %>%
   gsub("I_", "", .) %>% gsub("_", ".", .)
+
+
+year_df <- year_df %>% 
+  group_by(entity, indicator) %>% 
+  filter(latest_data_year == max(latest_data_year))
+
+```
+
+```{r, echo = FALSE, eval = FALSE}
+#write.csv(year_df, "sdg_tracker_data_2020_03_09.csv", row.names = FALSE)
 ```
 
 
 ```{r, echo = FALSE}
 #Removing countries which are in the sdg tracker data but do not have a geometry in the #world sf - need to try downloading the rnaturalearthhighres package.
 
-world <- clean_names(ne_countries(scale = "large", returnclass = "sf"))
+world <- clean_names(ne_countries(scale = "small", returnclass = "sf"))
 
 world$iso_a3[world$admin == "France"] <- "FRA"
 world$iso_a3[world$admin == "Indian Ocean Territory"] <- "IOT"
@@ -176,10 +189,12 @@ glob_inds <- glob_inds %>%
 
 glob_inds$indicator <- factor(glob_inds$indicator, levels = ind_ord)
 
+#write.csv(glob_inds, "global_indicators.csv", row.names = FALSE)
+
 ```
 
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, fig.height= 7, fig.width= 9}
 
 sdg_plot <- glob_inds %>% 
   dplyr::select(goal,indicator, got_indicator) %>% 
@@ -205,6 +220,8 @@ sdg_plot
 
 ```
 
+### Indicator tiers across goals
+
 Each of the SDG indicators have been classified into three tiers by the [Inter-agency and Expert Group on SDG Indicators](https://unstats.un.org/sdgs/iaeg-sdgs/). 
 
   * Tier 1: Indicator is conceptually clear, has an internationally established methodology and standards are available, and data are regularly produced by countries for at least 50 per cent of countries and of the population in every region where the indicator is relevant.
@@ -215,7 +232,7 @@ Each of the SDG indicators have been classified into three tiers by the [Inter-a
 
 
 Here we look at how the distribution of the tiers across the SDGs. 
-```{r, echo = FALSE}
+```{r, echo = FALSE, fig.height= 7, fig.width= 9}
 tier_goal_plot <- glob_inds %>% 
   dplyr::select(goal,indicator_tier,indicator) %>% 
   group_by(goal) %>% 
@@ -238,7 +255,7 @@ tier_goal_plot
 
 ```
 
-
+### Indicator tiers available on SDG Tracker
 
 
 The SDGs can be grouped into three broad pillars:
@@ -249,7 +266,7 @@ The SDGs can be grouped into three broad pillars:
 
 Here we look at the indicator data availability across these pillars based on the SDG Tracker data.
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, fig.height= 7, fig.width= 9}
 pillar_plot <- glob_inds %>% 
   dplyr::select(pillar,indicator, got_indicator) %>% 
   group_by(pillar) %>% 
@@ -258,7 +275,7 @@ pillar_plot <- glob_inds %>%
   select(pillar, sum_inds, num_inds, prop_inds) %>% 
   distinct() %>% 
   ungroup() %>% 
-  mutate(pillar = factor(pillar, levels = c("Economy", "Society", "Biosphere"))) %>% 
+  mutate(pillar = factor(pillar, levels = c("Biosphere", "Society", "Economy"))) %>% 
   ggplot(., aes(x = pillar, y = prop_inds, group = pillar,fill = pillar, colour = pillar))+
   geom_bar(stat = "identity", colour = "black") +
   pillar_fill_scale + 
@@ -275,17 +292,18 @@ pillar_plot
 
 ```
 
+### Indicator tiers across SDG pillars
 
 We also look at the distribution of the indicator tiers across the SDG pillars.
 
 
-```{r, echo = FALSE}
+```{r, echo = FALSE, fig.height= 7, fig.width= 9}
 pillar_tier_plot <- glob_inds %>% 
   dplyr::select(pillar,indicator_tier,indicator) %>% 
   group_by(pillar) %>% 
   distinct() %>% 
   ungroup() %>% 
-  mutate(pillar = factor(pillar, levels = c("Economy", "Society", "Biosphere"))) %>% 
+  mutate(pillar = factor(pillar, levels = c("Biosphere", "Society", "Economy"))) %>% 
   ggplot(., aes(x = pillar,fill = indicator_tier))+
   geom_bar(position = "fill", colour = "black") +
   theme_fiona()+
@@ -301,118 +319,60 @@ pillar_tier_plot
 ```
 
 ```{r, echo = FALSE}
-kable(inds %>% 
-  group_by(pillar) %>% 
-  summarise(count = n(),no_track_count = sum(sdg_tracker_indicator_available == "No"),tier_3 = sum(indicator_tier == 3), prop_no_ind = round((no_track_count/count)*100,2), prop_t3 = round((tier_3/count)*100,2)) %>% 
-  select(pillar, prop_no_ind, prop_t3) %>% 
-      arrange(-prop_no_ind), col.names = c("Pillar",
-                           "Missing Indicators (%)",
-                           "Tier 3 Indicators (%)"))%>%
+kable(
+  inds %>%
+    group_by(pillar) %>%
+    summarise(
+      count = n(),
+      no_track_count = sum(sdg_tracker_indicator_available == "No"),
+      tier_3 = sum(indicator_tier == 3),
+      prop_no_ind = round((no_track_count / count) * 100, 2),
+      prop_t3 = round((tier_3 / count) * 100, 2)
+    ) %>%
+    select(pillar, prop_no_ind, prop_t3) %>%
+    arrange(-prop_no_ind),
+  col.names = c("Pillar",
+                "Missing Indicators (%)",
+                "Tier 3 Indicators (%)")
+) %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
 ```
 
-
-
-
-# The age of the most recent indicator data
-
-The SDG Tracker data has country level data and records a time-series of the data available for each country, in each indicator. Here we show the year with the most recent data available for each country, across the SDGs.
-
-```{r, echo = FALSE}
-world_df <- data.frame(world %>% 
-  select(iso_a3, region_un, continent, pop_est, gdp_md_est) %>% 
-  mutate(code = iso_a3, region_un = as.factor(region_un)) %>% 
-  left_join(., glob_inds, by = "code"))
-
-
-goal_ind_age <- world_df %>% 
-  filter(!is.na(latest_data_year)& region_un != "Antarctica"& region_un != "Seven seas (open ocean)") %>% 
-  group_by(goal,indicator, entity) %>% 
-  filter(latest_data_year == max(latest_data_year)) %>% 
-  ungroup() %>% 
-  group_by(goal, latest_data_year) %>% 
-  mutate(year_freq = n()) %>%
-  ungroup() %>% 
-  mutate(goal = factor(goal, levels = 17:1)) %>% 
-  select(goal, latest_data_year, year_freq) %>% 
-  arrange(goal,latest_data_year) %>% 
-  distinct() %>% 
-  ggplot(., aes(x = latest_data_year, y = goal, size = year_freq, fill = goal, col = goal))+
-  geom_point(alpha = 0.75, shape=21)+ 
-  sdg_fill_scale + 
-  sdg_col_scale +
-  theme_fiona() + 
-  #theme(legend.position = "none") + 
-  ylab("Sustainable Development Goal") + 
-  xlab("Year") + 
-  ggtitle("Age of Most Recent Indicator Data - All Countries")+
-  guides(fill = FALSE, col = FALSE, size=guide_legend(title="Number of Indicators")) 
-
-
-goal_ind_age
- 
-```
-
-### The age of the most recent indicator data by region
-
-This plot shows the same data but broken down by region.
-
-```{r, echo = FALSE, fig.height= 7, fig.width= 9}
-
-
-
-goal_ind_age_region <- world_df %>% 
-  filter(!is.na(latest_data_year)& region_un != "Antarctica"& region_un != "Seven seas (open ocean)") %>% 
-  group_by(goal,indicator, entity) %>% 
-  filter(latest_data_year == max(latest_data_year)) %>% 
-  ungroup() %>% 
-  group_by(region_un ,goal, latest_data_year) %>% 
-  mutate(year_freq = n()) %>%
-  ungroup() %>% 
-  mutate(goal = factor(goal, levels = 17:1)) %>% 
-  select(region_un, goal, latest_data_year, year_freq) %>% 
-  arrange(goal,latest_data_year) %>% 
-  distinct() %>% 
-  ggplot(., aes(x = latest_data_year, y = goal, size = year_freq, fill = goal, col = goal), group = region_un)+
-  geom_point(alpha = 0.75, shape=21)+ 
-  sdg_fill_scale + 
-  sdg_col_scale +
-  theme_fiona() + 
-  theme(axis.text=element_text(size=10)) + 
-  ylab("Sustainable Development Goal") + 
-  xlab("Year") + 
-  ggtitle("Age of Most Recent Indicator Data - By Region")+
-  facet_wrap( ~ region_un) + 
-  guides(fill = FALSE, col = FALSE, size=guide_legend(title="Number of Indicators")) 
-
-
-goal_ind_age_region 
-
-
-```
+# Indicator Availability
 
 ### The number of countries which have data for an indicator - at goal level
 
 There are a number of indicators which are only available for a limited number of countries. Here we highlight the number of countries with data available for each indicator.
 
 ```{r, echo = FALSE, fig.height = 10, fig.width = 8}
-num_countries <- glob_inds %>% 
-  select(goal,code, indicator, entity, latest_data_year) %>%
-  group_by(goal,indicator,entity) %>% 
-  filter(latest_data_year == max(latest_data_year) | is.na(latest_data_year) & code != "ATA") %>% 
-  ungroup() %>% 
-  group_by(goal, indicator) %>% 
+num_countries <- glob_inds %>%
+  select(goal, code, indicator, entity, latest_data_year) %>%
+ # group_by(goal, indicator, entity) %>%
+  filter(code != "ATA") %>%
+  #ungroup() %>%
+  group_by(goal, indicator) %>%
   summarise(num_countries = sum(!is.na(latest_data_year))) %>%
-  ungroup() %>% 
-  mutate(goal = factor(goal, levels = 17:1)) %>% 
-  arrange(num_countries) %>% 
-  ggplot(., aes(x = num_countries, y = goal, fill = goal))+
-  geom_density_ridges(scale = 1.5, gradient_lwd = 1., alpha = 0.6, from = 0, to = 233, 
-                      jittered_points = TRUE, position = position_points_jitter(width = 0.075, height = 0),point_shape = '|', point_size = 1.5, point_alpha = 1, alpha = 0.7) + 
+  ungroup() %>%
+  mutate(goal = factor(goal, levels = 17:1)) %>%
+  arrange(num_countries) %>%
+  ggplot(., aes(x = num_countries, y = goal, fill = goal)) +
+  geom_density_ridges(
+    scale = 1.5,
+    gradient_lwd = 1.,
+    alpha = 0.6,
+    from = 0,
+    to = 233,
+    jittered_points = TRUE,
+    position = position_points_jitter(width = 0.075, height = 0),
+    point_shape = '|',
+    point_size = 1.5,
+    point_alpha = 1,
+    alpha = 0.7
+  ) +
   theme_fiona() +
-  sdg_fill_scale + 
-  theme(legend.position = "none")+
-  ylab("Sustainable Development Goal")+
+  sdg_fill_scale +
+  theme(legend.position = "none") +
+  ylab("Sustainable Development Goal") +
   xlab("Number of Countries with Indicator Data")
 
 num_countries
@@ -422,18 +382,20 @@ num_countries
 
 ### The number of indicators available in each country:
 
-<style>
-.html-widget {
-    margin: auto;
-}
-</style>
+ <style>
+ .html-widget {
+     margin: auto;
+ }
+ </style>
+
 
 ```{r, echo = FALSE, fig.height= 6, fig.width= 9}
+
 world_sf <- world %>%
   select(iso_a3, region_un, continent, pop_est, gdp_md_est) %>%
   mutate(code = iso_a3, region_un = as.factor(region_un)) %>%
-  left_join(., glob_inds, by = "code")
-
+   left_join(., glob_inds, by = "code") #%>% 
+  # select(iso_a3, region_un, code, pillar, indicator_tier, indicator,entity, latest_data_year, got_indicator) %>% st_write(.,  "global_indicators.shp")
 
 num_ind_countries <- world_sf %>%
   group_by(entity, indicator) %>%
@@ -441,8 +403,7 @@ num_ind_countries <- world_sf %>%
     latest_data_year == max(latest_data_year) |
       is.na(latest_data_year) &
       region_un != "Antarctica" &
-      region_un != "Seven seas (open ocean)"
-  ) %>%
+      region_un != "Seven seas (open ocean)") %>%
   ungroup() %>%
   group_by(entity) %>%
   summarise(sum_ind = sum(!is.na(latest_data_year)))
@@ -460,7 +421,7 @@ labels <- sprintf(
 ) %>% lapply(htmltools::HTML)
 
 leaflet(num_ind_countries) %>%
-  setView(0, 10, 2) %>%
+  setView(0, 30, 2) %>%
   addProviderTiles("CartoDB.Positron") %>%
   addPolygons(
     fillColor = ~ pal(sum_ind),
@@ -488,73 +449,241 @@ leaflet(num_ind_countries) %>%
     values = ~ sum_ind,
     opacity = 0.7,
     title = NULL,
-    position = "bottomright"
+    position = "bottomleft",
+      labFormat = labelFormat(big.mark = "")
   )
 
 ```
 
+```{r, echo = FALSE, eval = FALSE}
+#saveRDS(world_sf, "global_indicators.rds")
 
+```
+
+```{r, eval = FALSE, echo = FALSE}
+### Table of indicators with covering the fewest countries - <30 
+
+inds_min <- inds %>%
+  select(official_indicator, indicator)
+
+kable(
+  glob_inds %>%
+    # group_by(entity, indicator) %>%
+    # filter(
+    #   latest_data_year == max(latest_data_year) |
+    #     is.na(latest_data_year)
+    # ) %>%
+    # ungroup() %>%
+    group_by(indicator) %>%
+    summarise(sum_no_country = sum(is.na(latest_data_year))) %>%
+    arrange(-sum_no_country) %>%
+    filter(sum_no_country > 205) %>%
+    select(indicator, sum_no_country) #%>% 
+#   left_join(., inds_min, by = "indicator"),
+#   col.names = c("Indicator", "Indicator Description"),
+#   caption = "Indicators with the oldest data"
+# ) 
+
+```
+
+# Age of Indicator Data
+
+### The age of the most recent indicator data - all countries 
+
+The SDG Tracker data has country level data and records a time-series of the data available for each country, in each indicator. Here we show the year with the most recent data available for each country, across the SDGs.
+
+```{r, echo = FALSE, fig.height= 7, fig.width= 9}
+
+goal_ind_age <- glob_inds %>% 
+  filter(!is.na(latest_data_year)) %>% 
+  # group_by(goal,indicator, entity) %>% 
+  # filter(latest_data_year == max(latest_data_year)) %>% 
+  # ungroup() %>% 
+  group_by(goal, latest_data_year) %>% 
+  mutate(year_freq = n()) %>%
+  ungroup() %>% 
+  mutate(goal = factor(goal, levels = 17:1)) %>% 
+  select(goal, latest_data_year, year_freq) %>% 
+  arrange(goal,latest_data_year) %>% 
+  distinct() %>% 
+  ggplot(., aes(x = latest_data_year, y = goal, size = year_freq, fill = goal, col = goal, text = year_freq))+
+  geom_point(alpha = 0.75, shape=21)+ 
+  sdg_fill_scale + 
+  sdg_col_scale +
+  theme_fiona() + 
+  theme(legend.position = "none") + 
+  ylab("Sustainable Development Goal") + 
+  xlab("Year") + 
+  ggtitle("Age of Most Recent Indicator Data - All Countries")+
+  guides(fill = FALSE, col = FALSE, size=guide_legend(title="Number of Indicators")) 
+
+
+fig <- ggplotly(goal_ind_age, tooltip = "text")
+ 
+fig
+
+```
+
+
+
+### The age of the most recent indicator data by region
+
+This plot shows the same data but broken down by region.
+
+```{r, echo = FALSE, fig.height= 7, fig.width= 9}
+
+world_df <- data.frame(world %>%
+  select(iso_a3, region_un, continent, pop_est, gdp_md_est) %>%
+  mutate(code = iso_a3, region_un = as.factor(region_un)) %>%
+  left_join(., glob_inds, by = "code"))
+
+goal_ind_age_region <- world_df %>% 
+  filter(!is.na(latest_data_year)& region_un != "Antarctica"& region_un != "Seven seas (open ocean)") %>% 
+  group_by(goal,indicator, entity) %>% 
+  filter(latest_data_year == max(latest_data_year)) %>% 
+  ungroup() %>% 
+  group_by(region_un ,goal, latest_data_year) %>% 
+  mutate(year_freq = n()) %>%
+  ungroup() %>% 
+  mutate(goal = factor(goal, levels = 17:1)) %>% 
+  select(region_un, goal, latest_data_year, year_freq) %>% 
+  arrange(goal,latest_data_year) %>% 
+  distinct() %>% 
+  ggplot(., aes(x = latest_data_year, y = goal, size = year_freq, fill = goal, col = goal, text = year_freq), group = region_un)+
+  geom_point(alpha = 0.75, shape=21)+ 
+  sdg_fill_scale + 
+  sdg_col_scale +
+  theme_fiona() + 
+  theme(legend.position = "none") + 
+  ylab("Sustainable Development Goal") + 
+  xlab("Year") + 
+  ggtitle("Age of Most Recent Indicator Data - By Region")+
+  facet_wrap( ~ region_un) + 
+  guides(fill = FALSE, col = FALSE, size=guide_legend(title="Number of Indicators"))+
+  theme(panel.spacing = unit(2, "lines"))
+
+
+#goal_ind_age_region 
+
+fig <- ggplotly(goal_ind_age_region, tooltip = "text")
+ 
+fig
+
+
+```
+
+### Table of indicators with the oldest data (pre 2000)
+
+```{r, echo = FALSE}
+
+inds_min <- inds %>% 
+  select(official_indicator, indicator)
+
+kable(world_df %>% 
+  filter(!is.na(latest_data_year)& region_un != "Antarctica"& region_un != "Seven seas (open ocean)") %>% 
+  group_by(indicator) %>% 
+    #filter(latest_data_year == min(latest_data_year)) %>% 
+    mutate(min_year = min(latest_data_year), max_year = max(latest_data_year)) %>% 
+    arrange(min_year) %>% 
+    select(indicator, min_year, max_year) %>% 
+       distinct() %>% 
+    filter(min_year <= 2000) %>% 
+    left_join(.,inds_min, by = "indicator") %>% 
+    select(indicator, official_indicator, min_year, max_year), col.names = c("Indicator", "Indicator Description", "Oldest Data", "Newest Data"), caption = "") 
+
+
+```
+
+ <style>
+ .html-widget {
+     margin: auto;
+ }
+ </style>
 
 
 ### The average date of the most recent available indicator data - at the country level
 
-```{r, echo = FALSE, eval = FALSE}
+```{r, echo = FALSE, fig.height= 6, fig.width= 9}
 
 
+mean_yr_countries <- world_sf %>%
+  group_by(entity) %>%
+  filter(!is.na(latest_data_year)) %>% 
+  summarise(mean_year = mean(latest_data_year))
 
-mean_yr_countries <- world_sf %>% 
-  group_by(entity, indicator) %>% 
-  filter(latest_data_year == max(latest_data_year)) %>% 
-  ungroup() %>% 
-  group_by(entity) %>% 
-  summarise(mean_year = mean(latest_data_year)) 
-  
-  
+
 mean_yr_countries <- as_Spatial(mean_yr_countries)
-  
+
 bins <- c(2012:2020)
-pal <-  colorBin("YlOrRd", domain = num_ind_countries$sum_ind, bins = bins)
-  
+pal <-
+  colorBin("YlOrRd", domain =mean_yr_countries$mean_year, bins = bins)
+
 labels <- sprintf(
-    "<strong>%s</strong><br/>Average year of data availability: %g",
-    mean_yr_countries$entity,
-    mean_yr_countries$mean_year
+  "<strong>%s</strong><br/>Average year of data availability: %g",
+  mean_yr_countries$entity,
+  mean_yr_countries$mean_year
 ) %>% lapply(htmltools::HTML)
-  
-  leaflet(mean_yr_countries) %>%
-    setView(0, 10, 2) %>%
-    addProviderTiles("CartoDB.Positron") %>%
-    addPolygons(
-      fillColor = ~ pal(mean_year),
-      weight = 2,
-      opacity = 1,
-      color = "white",
-      dashArray = "3",
+
+leaflet(mean_yr_countries) %>%
+  setView(0, 30, 2) %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  addPolygons(
+    fillColor = ~ pal(mean_year),
+    weight = 2,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    highlight = highlightOptions(
+      weight = 5,
+      color = "#666",
+      dashArray = "",
       fillOpacity = 0.7,
-      highlight = highlightOptions(
-        weight = 5,
-        color = "#666",
-        dashArray = "",
-        fillOpacity = 0.7,
-        bringToFront = TRUE
-      ),
-      label = labels,
-      labelOptions = labelOptions(
-        style = list("font-weight" = "normal", padding = "3px 8px"),
-        textsize = "15px",
-        direction = "auto"
-      )
-    ) %>%
-    addLegend(
-      pal = pal,
-      values = ~ mean_year,
-      opacity = 0.7,
-      title = NULL,
-      position = "bottomright"
+      bringToFront = TRUE
+    ),
+    label = labels,
+    labelOptions = labelOptions(
+      style = list("font-weight" = "normal", padding = "3px 8px"),
+      textsize = "15px",
+      direction = "auto"
     )
+  ) %>%
+  addLegend(
+    pal = pal,
+    values = ~ mean_year,
+    opacity = 0.7,
+    title = NULL,
+    position = "bottomleft",
+      labFormat = labelFormat(big.mark = "")
+  )
+
+```
+
+### Table of countries with the oldest data
+
+```{r, echo = FALSE}
+
+inds_min <- inds %>% 
+  select(official_indicator, indicator)
+
+kable(world_df %>% 
+  filter(!is.na(latest_data_year)& region_un != "Antarctica"& region_un != "Seven seas (open ocean)") %>% 
+  select(entity,indicator, latest_data_year) %>% 
+  group_by(entity) %>% 
+ #filter(latest_data_year == min(latest_data_year)) %>% 
+    mutate(min_year = min(latest_data_year), max_year = max(latest_data_year)) %>% 
+   ungroup() %>% 
+   arrange(min_year) %>% 
+    select(entity, min_year, max_year, indicator, latest_data_year) %>% 
+   filter(min_year == latest_data_year, min_year <= 2000) %>% 
+       distinct() %>% 
+   left_join(., inds_min, by = "indicator") %>% 
+  select(entity, min_year, indicator, official_indicator,max_year) 
+  , caption = "", col.names = c("Country","Country Oldest Data", "Indicator w/ Oldest Data","Indicator Description","Country Newest Data")) 
 
 
 ```
+
 
 
 ```{r, eval = FALSE, echo = FALSE}
