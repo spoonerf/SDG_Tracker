@@ -1,7 +1,14 @@
-#src = 'https://ourworldindata.org/grapher/share-of-population-living-in-poverty-by-national-poverty-lines?tab=data'
 import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
+
+pages = ["https://sdg-tracker.org/no-poverty","https://sdg-tracker.org/zero-hunger", 
+"https://sdg-tracker.org/good-health", "https://sdg-tracker.org/quality-education",
+"https://sdg-tracker.org/gender-equality", "https://sdg-tracker.org/water-and-sanitation",
+"https://sdg-tracker.org/energy", "https://sdg-tracker.org/economic-growth", "https://sdg-tracker.org/infrastructure-industrialization",
+"https://sdg-tracker.org/inequality", "https://sdg-tracker.org/cities", "https://sdg-tracker.org/sustainable-consumption-production",
+"https://sdg-tracker.org/climate-change", "https://sdg-tracker.org/oceans", 
+"https://sdg-tracker.org/biodiversity", "https://sdg-tracker.org/peace-justice", "https://sdg-tracker.org/global-partnerships"]
 
 page = requests.get("https://sdg-tracker.org/no-poverty")   #one of the sdg-tracker pages I want to download from                 
 soup = BeautifulSoup(page.content, 'html.parser')   #parsing the html from this page
