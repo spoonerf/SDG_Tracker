@@ -1,8 +1,10 @@
 import requests
 import pandas as pd
+import time
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from itertools import compress
+
 
 #the sdg-tracker pages I want to get data from
 pages = ["https://sdg-tracker.org/no-poverty","https://sdg-tracker.org/zero-hunger",
@@ -60,5 +62,8 @@ for page_in in pages:
           for headline in headlines:
               print(headline.text.strip())
               click_dat = headline.click()
+              time.sleep(10)
               csv_source = driver.find_element_by_xpath("//*[contains(concat( ' ', @class, ' '), concat( ' ', 'btn-primary', ' ' ))]")
+              time.sleep(10)
               csv_source.click()
+              time.sleep(10)
