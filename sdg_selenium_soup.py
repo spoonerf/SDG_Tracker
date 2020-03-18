@@ -25,7 +25,6 @@ for page_in in pages:
         x = tag.get_text()
         y = x.split("\n")[1]
         text.append(y)
-        print(tag)
         fig = tag.find_all(class_="grapherPreview")
         fig_src.append(fig)
     avail = text[1::2]
@@ -35,9 +34,9 @@ for page_in in pages:
     df.to_csv(r'C:\Users\Fiona\Documents\ECEHH\SDG_Tracker\sdg_tracker_sources.csv', mode='a', header=False)
     figs = soup.find_all(class_="grapherPreview")  #finding all the 'grapherPreview' windows on the page - ignoring the extraneous href tags
     srcs = []
+    driver = webdriver.Chrome()   #setting up the web driver
     for fig in figs:
       srcs.append(fig.get('data-grapher-src'))  #getting the source page link for each of the grapherPreview windows
-    driver = webdriver.Chrome()   #setting up the web driver
     for src in srcs:      #looping through each of the links
       split_src = src.split("?", 1)   #ensuring that it is the DATA tab that page opens on rather than chart etc
       sub_src = split_src[0]
