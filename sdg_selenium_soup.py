@@ -1,10 +1,15 @@
 import requests
 import pandas as pd
 import time
+import glob
+import os
+import ntpath
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from itertools import compress
 
+
+dest = "C:/Users/Fiona/Documents/ECEHH/SDG_Tracker/Auto_Data/"
 
 #the sdg-tracker pages I want to get data from
 pages = ["https://sdg-tracker.org/no-poverty","https://sdg-tracker.org/zero-hunger",
@@ -30,6 +35,9 @@ for page_in in pages:
     avail = text[1::2]
     ind = text[::2]
     source = fig_src[1::2]
+    goal = 'Goal_' + ind[0].replace('SDG Indicator ','').split('.',1)[0]
+    target = 'Target_' + ind[0].replace('SDG Indicator ','').split('.',2)[0] + '.' + ind[0].replace('SDG Indicator ','').split('.',2)[1]
+    indicator = 'Indicator_' + ind[0].replace('SDG Indicator ','')
     df = pd.DataFrame(list(zip(ind, avail, source)), columns =['Indicator', 'Available', 'Source'])
     df.to_csv(r'C:\Users\Fiona\Documents\ECEHH\SDG_Tracker\sdg_tracker_sources.csv', mode='a', header=False)
     figs = soup.find_all(class_="grapherPreview")  #finding all the 'grapherPreview' windows on the page - ignoring the extraneous href tags
@@ -66,3 +74,12 @@ for page_in in pages:
               time.sleep(10)
               csv_source.click()
               time.sleep(10)
+              list_of_files = glob.glob('C:/Users/Fiona/Downloads/*csv') # * means all if need specific format then *.csv
+              latest_file = max(list_of_files, key=os.path.getctime)
+              file_name = ntpath.basename(latest_file) 
+              if os.path.exists(dest + '/' + goal + '/' + target + '/' + indicator):
+                  os.rename(latest_file, dest + '/' + goal + '/' + target + '/' + indicator + '/' + file_name)
+              else:
+                  os.mkdir(dest + '/' + goal + '/' + target + '/' + indicator)
+                  os.rename(latest_file, dest + '/' + goal + '/' + target + '/' + indicator + '/' + file_name)
+              
