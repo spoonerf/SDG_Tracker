@@ -4,6 +4,7 @@ import time
 import glob
 import os
 import ntpath
+from shutil import move
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from itertools import compress
@@ -32,12 +33,10 @@ for page_in in pages:
         text.append(y)
         fig = tag.find_all(class_="grapherPreview")
         fig_src.append(fig)
+        print(tag)
     avail = text[1::2]
     ind = text[::2]
     source = fig_src[1::2]
-    goal = 'Goal_' + ind[0].replace('SDG Indicator ','').split('.',1)[0]
-    target = 'Target_' + ind[0].replace('SDG Indicator ','').split('.',2)[0] + '.' + ind[0].replace('SDG Indicator ','').split('.',2)[1]
-    indicator = 'Indicator_' + ind[0].replace('SDG Indicator ','')
     df = pd.DataFrame(list(zip(ind, avail, source)), columns =['Indicator', 'Available', 'Source'])
     df.to_csv(r'C:\Users\Fiona\Documents\ECEHH\SDG_Tracker\sdg_tracker_sources.csv', mode='a', header=False)
     figs = soup.find_all(class_="grapherPreview")  #finding all the 'grapherPreview' windows on the page - ignoring the extraneous href tags
@@ -58,6 +57,10 @@ for page_in in pages:
               click_dat = headline.click()     #clicks the active tab
               csv_source = driver.find_element_by_xpath("//*[contains(concat( ' ', @class, ' '), concat( ' ', 'btn-primary', ' ' ))]")   #identifies the primary button to download data
               csv_source.click()   #clicks the primary button to download data
+              list_of_files = glob.glob('C:/Users/Fiona/Downloads/*csv') # * means all if need specific format then *.csv
+              latest_file = max(list_of_files, key=os.path.getctime)
+              file_name = ntpath.basename(latest_file) 
+              move(latest_file, dest + '/' + file_name)
       else:
           print('Redirecting from ' + src_new)  #reformats the redirected url to ensure the DATA tab is active
           src_red = driver.current_url
@@ -69,17 +72,13 @@ for page_in in pages:
           for headline in headlines:
               print(headline.text.strip())
               click_dat = headline.click()
-              time.sleep(10)
               csv_source = driver.find_element_by_xpath("//*[contains(concat( ' ', @class, ' '), concat( ' ', 'btn-primary', ' ' ))]")
-              time.sleep(10)
               csv_source.click()
-              time.sleep(10)
               list_of_files = glob.glob('C:/Users/Fiona/Downloads/*csv') # * means all if need specific format then *.csv
               latest_file = max(list_of_files, key=os.path.getctime)
               file_name = ntpath.basename(latest_file) 
-              if os.path.exists(dest + '/' + goal + '/' + target + '/' + indicator):
-                  os.rename(latest_file, dest + '/' + goal + '/' + target + '/' + indicator + '/' + file_name)
-              else:
-                  os.mkdir(dest + '/' + goal + '/' + target + '/' + indicator)
-                  os.rename(latest_file, dest + '/' + goal + '/' + target + '/' + indicator + '/' + file_name)
+              move(latest_file, dest + '/' + file_name)
               
+
+
+
