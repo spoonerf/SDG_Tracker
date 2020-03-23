@@ -460,31 +460,46 @@ leaflet(num_ind_countries) %>%
 
 ```
 
-```{r, eval = FALSE, echo = FALSE}
-### Table of indicators with covering the fewest countries - <30 
+### Table of countries with data for fewest indicators  (< 110) 
+
+
+```{r, echo = FALSE}
 
 inds_min <- inds %>%
   select(official_indicator, indicator)
 
 kable(
   glob_inds %>%
-    # group_by(entity, indicator) %>%
-    # filter(
-    #   latest_data_year == max(latest_data_year) |
-    #     is.na(latest_data_year)
-    # ) %>%
-    # ungroup() %>%
-    group_by(indicator) %>%
-    summarise(sum_no_country = sum(is.na(latest_data_year))) %>%
-    arrange(-sum_no_country) %>%
-    filter(sum_no_country > 205) %>%
-    select(indicator, sum_no_country) #%>% 
-#   left_join(., inds_min, by = "indicator"),
-#   col.names = c("Indicator", "Indicator Description"),
-#   caption = "Indicators with the oldest data"
-# ) 
+      group_by(entity) %>%
+    summarise(sum_no_country = sum(!is.na(latest_data_year))) %>%
+    arrange(sum_no_country) %>%
+    filter(sum_no_country < 110) %>%
+    select(entity, sum_no_country),col.names = c("Country", "Number of Indicators with Data"))
 
 ```
+
+### Histogram of number of indicators with data per country
+
+```{r, echo = FALSE, fig.height= 7, fig.width= 9}
+
+ inds_count <- glob_inds %>%
+      group_by(entity) %>%
+    summarise(sum_no_country = sum(!is.na(latest_data_year))) %>%
+    arrange(sum_no_country) %>%
+    select(entity, sum_no_country)
+
+ggplot(inds_count, aes(x = sum_no_country, fill = "#7570b3"))+
+  geom_histogram() + 
+  xlab("Number of Indicators with Data per Country")+
+  ylab("Count") +
+  theme_fiona() + 
+  theme(legend.position = "none") +
+  geom_vline(aes(xintercept = 110))
+
+```
+
+
+
 
 # Age of Indicator Data
 
@@ -539,9 +554,9 @@ world_df <- data.frame(world %>%
 
 goal_ind_age_region <- world_df %>% 
   filter(!is.na(latest_data_year)& region_un != "Antarctica"& region_un != "Seven seas (open ocean)") %>% 
-  group_by(goal,indicator, entity) %>% 
-  filter(latest_data_year == max(latest_data_year)) %>% 
-  ungroup() %>% 
+  # group_by(goal,indicator, entity) %>% 
+  # filter(latest_data_year == max(latest_data_year)) %>% 
+  # ungroup() %>% 
   group_by(region_un ,goal, latest_data_year) %>% 
   mutate(year_freq = n()) %>%
   ungroup() %>% 
